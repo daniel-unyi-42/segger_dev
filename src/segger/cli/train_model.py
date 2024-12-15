@@ -73,7 +73,6 @@ def train_model(args: Namespace):
 
     # Initialize model
     logging.info("Initializing Segger model and trainer...")
-    metadata = (["tx", "bd"], [("tx", "belongs", "bd"), ("tx", "neighbors", "tx")])
 
     if args.pretrained_model_dir is not None:
         logging.info("Loading pretrained model...")
@@ -81,16 +80,22 @@ def train_model(args: Namespace):
 
         ls = load_model(args.pretrained_model_dir / "lightning_logs" / f"version_{args.model_version}" / "checkpoints")
     else:
+        tokens = dm.train[0].x_dict["tx"].ndim == 1
+        num_node_features = {
+            "tx": args.num_tx_tokens if tokens else dm.train[0].x_dict["tx"].shape[1],
+            "bd": dm.train[0].x_dict["bd"].shape[1],
+        }
+        if tokens:
+            print("Using learned embeddings as node features, number of tokens: ", num_node_features["tx"])
+        else:
+            print("Using scRNAseq embeddings as node features, number of features: ", num_node_features["tx"])
         ls = LitSegger(
-            num_tx_tokens=args.num_tx_tokens,
+            tokens=tokens,
+            num_node_features=num_node_features,
             init_emb=args.init_emb,
             hidden_channels=args.hidden_channels,
             out_channels=args.out_channels,  # Hard-coded value
-            heads=args.heads,  # Hard-coded value
-            num_mid_layers=args.num_mid_layers,  # Hard-coded value
-            aggr="sum",  # Hard-coded value
             learning_rate=args.learning_rate,
-            metadata=metadata,
         )
 
     # Forward pass to initialize the model

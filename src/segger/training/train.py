@@ -65,14 +65,11 @@ class LitSegger(LightningModule):
 
     def from_new(
         self,
-        num_tx_tokens: int,
+        tokens: bool,
+        num_node_features: int,
         init_emb: int,
         hidden_channels: int,
         out_channels: int,
-        heads: int,
-        num_mid_layers: int,
-        aggr: str,
-        metadata: Union[Tuple, Metadata],
     ):
         """
         Initializes the LitSegger module with new parameters.
@@ -97,17 +94,13 @@ class LitSegger(LightningModule):
             Metadata for heterogeneous graph structure.
         """
         # Create the Segger model (ensure num_tx_tokens is passed here)
-        model = Segger(
-            num_tx_tokens=num_tx_tokens,  # This is required and must be passed here
+        self.model = Segger(
+            tokens=tokens,
+            num_node_features=num_node_features,
             init_emb=init_emb,
             hidden_channels=hidden_channels,
             out_channels=out_channels,
-            heads=heads,
-            num_mid_layers=num_mid_layers,
         )
-        # Convert model to handle heterogeneous graphs
-        model = to_hetero(model, metadata=metadata, aggr=aggr)
-        self.model = model
         # Save hyperparameters
         self.save_hyperparameters()
 
@@ -136,8 +129,7 @@ class LitSegger(LightningModule):
         torch.Tensor
             The output of the model.
         """
-        z = self.model(batch.x_dict, batch.edge_index_dict)
-        output = torch.matmul(z["tx"], z["bd"].t())  # Example for bipartite graph
+        _, output = self.model(batch.x_dict, batch.edge_index_dict, batch["tx", "belongs", "bd"].edge_label_index)
         return output
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
@@ -157,12 +149,7 @@ class LitSegger(LightningModule):
             The loss value for the current training step.
         """
         # Forward pass to get the logits
-        z = self.model(batch.x_dict, batch.edge_index_dict)
-        output = torch.matmul(z["tx"], z["bd"].t())
-
-        # Get edge labels and logits
-        edge_label_index = batch["tx", "belongs", "bd"].edge_label_index
-        out_values = output[edge_label_index[0], edge_label_index[1]]
+        _, out_values = self.model(batch.x_dict, batch.edge_index_dict, batch["tx", "belongs", "bd"].edge_label_index)
         edge_label = batch["tx", "belongs", "bd"].edge_label
 
         # Compute binary cross-entropy loss with logits (no sigmoid here)
@@ -189,12 +176,7 @@ class LitSegger(LightningModule):
             The loss value for the current validation step.
         """
         # Forward pass to get the logits
-        z = self.model(batch.x_dict, batch.edge_index_dict)
-        output = torch.matmul(z["tx"], z["bd"].t())
-
-        # Get edge labels and logits
-        edge_label_index = batch["tx", "belongs", "bd"].edge_label_index
-        out_values = output[edge_label_index[0], edge_label_index[1]]
+        _, out_values = self.model(batch.x_dict, batch.edge_index_dict, batch["tx", "belongs", "bd"].edge_label_index)
         edge_label = batch["tx", "belongs", "bd"].edge_label
 
         # Compute binary cross-entropy loss with logits (no sigmoid here)
